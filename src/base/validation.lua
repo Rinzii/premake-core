@@ -81,6 +81,8 @@
 			m.configHasKind,
 			m.configSupportsKind,
 			m.configValuesInScope,
+			m.configHardenAslr,
+			m.configHardenAslrFiles,
 		}
 	end
 
@@ -204,6 +206,64 @@
 
 	function m.configValuesInScope(cfg)
 		p.config.validateScopes(cfg, cfg.project, "config")
+	end
+
+
+	function m.configHardenAslr(cfg, toolset)
+		local prjcfg, filecfg = p.config.normalize(cfg)
+		local value = prjcfg.hardenaslr
+		if filecfg and cfg.hardenaslr and cfg.hardenaslr ~= value and not (cfg.hardenaslr == "Default" and not value) then
+			p.error("hardenaslr cannot differ per file in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+		end
+		if value ~= p.ON and value ~= p.OFF then
+			return
+		end
+
+		local compiler = p.config.toolset(prjcfg) or toolset
+		local action = prjcfg.action or _ACTION
+		local isVisualStudio = action and action:startswith("vs")
+		local usesToolsetFlags = action == "gmake" or action == "ninja" or action == "codelite"
+		local supported
+		if prjcfg.system == p.LINUX and (not toolset or toolset == p.tools.gcc or toolset == p.tools.clang) then
+			supported = (compiler == p.tools.gcc or compiler == p.tools.clang) and (toolset or usesToolsetFlags)
+		elseif prjcfg.system == p.WINDOWS then
+			if toolset then
+				supported = compiler == toolset and (compiler == p.tools.gcc or compiler == p.tools.clang or compiler == p.tools.msc)
+			elseif usesToolsetFlags then
+				supported = (compiler == p.tools.gcc or compiler == p.tools.clang or compiler == p.tools.msc) and p.action.supportsToolset(prjcfg)
+			elseif isVisualStudio then
+				supported = (compiler == p.tools.clang or compiler == p.tools.msc) and p.action.supportsToolset(prjcfg)
+			end
+		end
+		if not supported or (prjcfg.language ~= p.C and prjcfg.language ~= p.CPP) or not table.contains({ p.CONSOLEAPP, p.WINDOWEDAPP, p.SHAREDLIB, p.STATICLIB }, prjcfg.kind) then
+			p.error("hardenaslr is unsupported for this target, toolset or action in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+		end
+		if prjcfg.system == p.LINUX then
+			if value == p.OFF and filecfg and cfg.pic and (cfg.pic == p.ON) ~= (prjcfg.pic == p.ON) then
+				p.error("hardenaslr code generation cannot differ per file in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+			end
+			if value == p.OFF and (prjcfg.kind == p.SHAREDLIB or prjcfg.kind == p.STATICLIB) then
+				p.error("hardenaslr Off is unsupported for Linux libraries in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+			end
+			if value == p.ON and (cfg.pic or prjcfg.pic) == p.OFF then
+				p.error("hardenaslr On conflicts with pic Off in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+			end
+		else
+			local architecture = prjcfg.architecture
+			if architecture and architecture ~= p.X86 and architecture ~= p.X86_64 and architecture ~= p.ARM and architecture ~= p.AARCH64 then
+				p.error("hardenaslr is unsupported for architecture '%s' in project '%s' configuration '%s'", architecture, prjcfg.project.name, prjcfg.name)
+			end
+			if value == p.OFF and (architecture == p.ARM or architecture == p.AARCH64) then
+				p.error("hardenaslr Off is unsupported on ARM in project '%s' configuration '%s'", prjcfg.project.name, prjcfg.name)
+			end
+		end
+	end
+
+	function m.configHardenAslrFiles(cfg)
+		for _, filename in ipairs(cfg.files) do
+			local filecfg = p.fileconfig.getconfig(cfg.project._.files[filename], cfg)
+			m.configHardenAslr(filecfg)
+		end
 	end
 
 

@@ -104,9 +104,28 @@
 			Size = "-Os",
 			Speed = "-O3",
 		},
-		pic = {
-			On = "-fPIC",
-		},
+		pic = function(cfg)
+			local prjcfg = config.normalize(cfg)
+			if prjcfg.system == p.LINUX and (prjcfg.hardenaslr == p.ON or prjcfg.hardenaslr == p.OFF) then
+				return nil
+			end
+			return { On = "-fPIC" }
+		end,
+		hardenaslr = function(cfg)
+			p.validation.configHardenAslr(cfg, gcc)
+			local prjcfg = config.normalize(cfg)
+			if prjcfg.system == p.WINDOWS or getmetatable(cfg) == p.fileconfig.fsub_mt or not prjcfg.hardenaslr or prjcfg.hardenaslr == "Default" then
+				return nil
+			end
+			if prjcfg.kind == p.CONSOLEAPP or prjcfg.kind == p.WINDOWEDAPP then
+				return {
+					On = "-fPIE",
+					Off = iif(prjcfg.pic == p.ON, "-fPIC", "-fno-PIE"),
+				}
+			elseif prjcfg.kind == p.SHAREDLIB or prjcfg.kind == p.STATICLIB then
+				return { On = "-fPIC" }
+			end
+		end,
 		vectorextensions = {
 			AVX = "-mavx",
 			AVX2 = "-mavx2",
@@ -604,6 +623,31 @@
 			All = "-Wl,--fatal-warnings",
 		},
 		linktimeoptimization = gcc.shared.linktimeoptimization,
+		hardenaslr = function(cfg)
+			local prjcfg = config.normalize(cfg)
+			if prjcfg.system == p.WINDOWS then
+				p.validation.configHardenAslr(cfg, gcc)
+				if prjcfg.kind ~= p.STATICLIB then
+					return {
+						On = "-Wl,--dynamicbase",
+						Off = "-Wl,--disable-dynamicbase",
+					}
+				end
+				return nil
+			end
+			local shared = gcc.shared.hardenaslr(cfg)
+			if not shared then
+				return nil
+			end
+			if cfg.kind == p.CONSOLEAPP or cfg.kind == p.WINDOWEDAPP then
+				return {
+					On = { shared.On, "-pie" },
+					Off = { shared.Off, "-no-pie" },
+				}
+			elseif cfg.kind == p.SHAREDLIB then
+				return shared
+			end
+		end,
 		kind = {
 			SharedLib = function(cfg)
 				local r = { gcc.getsharedlibarg(cfg) }
@@ -844,7 +888,7 @@
 		cc = "gcc",
 		cxx = "g++",
 		-- Apple's ar does not support the GCC LTO object format and is not part of the GNU toolchain.
-		ar = function(cfg) return iif(cfg.system == p.MACOSX, "gcc-ar", "ar") end,
+		ar = function(cfg) return iif(cfg.system == p.MACOSX or cfg.linktimeoptimization == "On" or cfg.linktimeoptimization == "Fast", "gcc-ar", "ar") end,
 		rc = "windres"
 	}
 

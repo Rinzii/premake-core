@@ -963,3 +963,89 @@ end
 		prepare()
 		test.excludes("/dynamicdeopt", msc.getldflags(cfg))
 	end
+
+
+--
+-- Check ASLR hardening flags for MSVC.
+--
+
+	-- On emits /DYNAMICBASE for executables.
+	function suite.ldflags_onHardenAslrOn_consoleApp()
+		system "Windows"
+		kind "ConsoleApp"
+		hardenaslr "On"
+		prepare()
+		test.contains("/DYNAMICBASE", msc.getldflags(cfg))
+	end
+
+	-- Off emits /DYNAMICBASE:NO for executables.
+	function suite.ldflags_onHardenAslrOff_consoleApp()
+		system "Windows"
+		kind "ConsoleApp"
+		hardenaslr "Off"
+		prepare()
+		test.contains("/DYNAMICBASE:NO", msc.getldflags(cfg))
+	end
+
+	-- Default emits no ASLR linker flags.
+	function suite.ldflags_onHardenAslrDefault_consoleApp()
+		system "Windows"
+		kind "ConsoleApp"
+		hardenaslr "Default"
+		prepare()
+		test.excludes({ "/DYNAMICBASE", "/DYNAMICBASE:NO" }, msc.getldflags(cfg))
+	end
+
+	-- On emits /DYNAMICBASE for shared libraries.
+	function suite.ldflags_onHardenAslrOn_sharedLib()
+		system "Windows"
+		kind "SharedLib"
+		hardenaslr "On"
+		prepare()
+		test.contains("/DYNAMICBASE", msc.getldflags(cfg))
+	end
+
+	-- On emits no ASLR linker flags for static libraries.
+	function suite.ldflags_onHardenAslrOn_staticLib()
+		system "Windows"
+		kind "StaticLib"
+		hardenaslr "On"
+		prepare()
+		test.excludes({ "/DYNAMICBASE", "/DYNAMICBASE:NO" }, msc.getldflags(cfg))
+	end
+
+	-- Disabling ASLR on ARM raises an error.
+	function suite.raisesError_onHardenAslrOff_onArm()
+		system "Windows"
+		architecture "ARM"
+		hardenaslr "Off"
+		prepare()
+		local ok, err = pcall(function ()
+			msc.getldflags(cfg)
+		end)
+		test.isfalse(ok)
+	end
+
+	-- Disabling ASLR on ARM64 raises an error.
+	function suite.raisesError_onHardenAslrOff_onArm64()
+		system "Windows"
+		architecture "ARM64"
+		hardenaslr "Off"
+		prepare()
+		local ok, err = pcall(function ()
+			msc.getldflags(cfg)
+		end)
+		test.isfalse(ok)
+	end
+
+	-- MSVC cannot map a GNU/Linux GCC ASLR request.
+	function suite.hardenAslr_rejectsGccTarget()
+		system "Linux"
+		toolset "gcc"
+		kind "ConsoleApp"
+		hardenaslr "On"
+		prepare()
+		local ok, err = pcall(msc.getldflags, cfg)
+		test.isfalse(ok)
+		test.istrue(err:find("hardenaslr", 1, true) ~= nil)
+	end

@@ -1214,6 +1214,17 @@
 	}
 
 	api.register {
+		name = "hardenaslr",
+		scope = "config",
+		kind = "string",
+		allowed = {
+			"Default",
+			"On",
+			"Off"
+		}
+	}
+
+	api.register {
 		name = "useimportlib",
 		scope = "config",
 		kind = "string",

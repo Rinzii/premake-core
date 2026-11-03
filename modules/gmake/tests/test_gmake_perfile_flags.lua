@@ -108,3 +108,18 @@ PERFILE_FLAGS_0 = $(ALL_CFLAGS) -x objective-c
 PERFILE_FLAGS_1 = $(ALL_CXXFLAGS) -x objective-c++
 		]]
 	end
+
+	-- File ASLR overrides are unsupported.
+	function suite.perfile_hardenaslr()
+		system "Linux"
+		files { 'a.c', 'b.cpp' }
+
+		filter { 'files:a.c' }
+			hardenaslr "On"
+		filter { 'files:b.cpp' }
+			hardenaslr "Off"
+
+		local ok, err = pcall(prepare)
+		test.isfalse(ok)
+		test.istrue(err:find("hardenaslr", 1, true) ~= nil)
+	end

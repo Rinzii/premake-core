@@ -78,6 +78,33 @@
 		test.isequal("gcc-ar-16", gcc.gettoolname(cfg, "ar"))
 	end
 
+	-- GCC LTO uses its plugin-aware archiver.
+	function suite.tools_withLinkTimeOptimization()
+		linktimeoptimization "On"
+		prepare()
+		test.isequal("gcc-ar", gcc.gettoolname(cfg, "ar"))
+	end
+
+	-- Fast LTO preserves archive prefixes and versions without changing neutral modes.
+	function suite.tools_withVersionedArchive_onLinkTimeOptimization()
+		system "Windows"
+		toolset "gcc-16"
+		gccprefix "x86_64-w64-mingw32-"
+		configurations { "Fast", "Off", "Default" }
+		filter "configurations:Fast"
+			linktimeoptimization "Fast"
+		filter "configurations:Off"
+			linktimeoptimization "Off"
+		filter "configurations:Default"
+			linktimeoptimization "Default"
+		local fast = test.getconfig(prj, "Fast")
+		local off = p.project.getconfig(fast.project, "Off")
+		local default = p.project.getconfig(fast.project, "Default")
+		test.isequal("x86_64-w64-mingw32-gcc-ar-16", gcc.gettoolname(fast, "ar"))
+		test.isequal("x86_64-w64-mingw32-ar-16", gcc.gettoolname(off, "ar"))
+		test.isequal("x86_64-w64-mingw32-ar-16", gcc.gettoolname(default, "ar"))
+	end
+
 --
 -- By default, the -MMD -MP are used to generate dependencies.
 --
@@ -1659,4 +1686,260 @@ end
 		characterset "Unicode"
 		prepare()
 		test.excludes({ "-municode" }, gcc.getldflags(cfg))
+	end
+
+
+--
+-- Check ASLR hardening flags for GCC.
+--
+
+	-- On emits -fPIE for executables in C and C++.
+	function suite.cflags_onHardenAslrOn_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "On"
+		prepare()
+		test.contains({ "-fPIE" }, gcc.getcflags(cfg))
+		test.contains({ "-fPIE" }, gcc.getcxxflags(cfg))
+	end
+
+	-- Off emits -fno-PIE for executables in C and C++.
+	function suite.cflags_onHardenAslrOff_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "Off"
+		prepare()
+		test.contains({ "-fno-PIE" }, gcc.getcflags(cfg))
+		test.contains({ "-fno-PIE" }, gcc.getcxxflags(cfg))
+	end
+
+	-- Default emits no PIE flags for executables in C or C++.
+	function suite.cflags_onHardenAslrDefault_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "Default"
+		prepare()
+		test.excludes({ "-fPIE", "-fno-PIE" }, gcc.getcflags(cfg))
+		test.excludes({ "-fPIE", "-fno-PIE" }, gcc.getcxxflags(cfg))
+	end
+
+	-- On emits -fPIC for static libraries.
+	function suite.cflags_onHardenAslrOn_staticLib()
+		kind "StaticLib"
+		hardenaslr "On"
+		prepare()
+		test.contains({ "-fPIC" }, gcc.getcflags(cfg))
+		test.contains({ "-fPIC" }, gcc.getcxxflags(cfg))
+	end
+
+	-- On emits -fPIE and -pie linker flags for executables.
+	function suite.ldflags_onHardenAslrOn_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "On"
+		prepare()
+		test.contains({ "-fPIE", "-pie" }, gcc.getldflags(cfg))
+	end
+
+	-- Off emits -fno-PIE and -no-pie linker flags for executables.
+	function suite.ldflags_onHardenAslrOff_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "Off"
+		prepare()
+		test.contains({ "-fno-PIE", "-no-pie" }, gcc.getldflags(cfg))
+	end
+
+	-- Default emits no PIE linker flags for executables.
+	function suite.ldflags_onHardenAslrDefault_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "Default"
+		prepare()
+		test.excludes({ "-pie", "-no-pie", "-fPIE", "-fno-PIE" }, gcc.getldflags(cfg))
+	end
+
+	-- On links with matching PIE code generation.
+	function suite.ldflags_onHardenAslrOn_withPicOn_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "On"
+		pic "On"
+		prepare()
+		test.contains({ "-fPIE", "-pie" }, gcc.getldflags(cfg))
+		test.excludes({ "-fPIC" }, gcc.getldflags(cfg))
+	end
+
+	-- Off with pic On emits -fPIC and -no-pie linker flags for executables.
+	function suite.ldflags_onHardenAslrOff_withPicOn_consoleApp()
+		kind "ConsoleApp"
+		hardenaslr "Off"
+		pic "On"
+		prepare()
+		test.contains({ "-fPIC", "-no-pie" }, gcc.getldflags(cfg))
+		test.excludes({ "-fno-PIE" }, gcc.getldflags(cfg))
+	end
+
+	-- On emits no PIE linker flags for static libraries.
+	function suite.ldflags_onHardenAslrOn_staticLib()
+		kind "StaticLib"
+		hardenaslr "On"
+		prepare()
+		test.excludes({ "-pie", "-no-pie" }, gcc.getldflags(cfg))
+	end
+
+	-- Shared libraries link as PIC without PIE flags.
+	function suite.ldflags_onHardenAslrOn_sharedLib()
+		kind "SharedLib"
+		hardenaslr "On"
+		prepare()
+		test.excludes({ "-pie", "-no-pie" }, gcc.getldflags(cfg))
+		test.contains({ "-fPIC", "-shared" }, gcc.getldflags(cfg))
+	end
+
+	-- Raises an error when ASLR is On and PIC is explicitly Off on Linux.
+	function suite.raisesError_onHardenAslrOn_withPicOff()
+		kind "ConsoleApp"
+		hardenaslr "On"
+		pic "Off"
+		prepare()
+		local ok, err = pcall(function ()
+			gcc.getcflags(cfg)
+		end)
+		test.isfalse(ok)
+	end
+
+	-- Unsupported target systems reject active ASLR requests.
+	function suite.cflags_onHardenAslrOn_nonLinux()
+		system "MacOSX"
+		kind "ConsoleApp"
+		hardenaslr "On"
+		prepare()
+		for _, getflags in ipairs({ gcc.getcflags, gcc.getcxxflags, gcc.getldflags }) do
+			local ok, err = pcall(getflags, cfg)
+			test.isfalse(ok)
+			test.istrue(err:find("hardenaslr", 1, true) ~= nil)
+		end
+	end
+
+	-- GCC cannot map a Windows MSVC ASLR request.
+	function suite.hardenAslr_rejectsMsvcTarget()
+		system "Windows"
+		toolset "msc"
+		hardenaslr "On"
+		prepare()
+		local ok, err = pcall(gcc.getcflags, cfg)
+		test.isfalse(ok)
+		test.istrue(err:find("hardenaslr", 1, true) ~= nil)
+	end
+
+	local function checkWindowsAslr(projectKind, imageArchitecture)
+		system "Windows"
+		architecture(imageArchitecture)
+		toolset "gcc"
+		kind(projectKind)
+		filter "configurations:Debug"
+			hardenaslr "On"
+		filter "configurations:Release"
+			hardenaslr "Off"
+		prepare()
+		local release = p.project.getconfig(cfg.project, "Release")
+		test.contains({ "-Wl,--dynamicbase" }, gcc.getldflags(cfg))
+		test.contains({ "-Wl,--disable-dynamicbase" }, gcc.getldflags(release))
+		for _, imagecfg in ipairs({ cfg, release }) do
+			test.excludes({ "-fPIC", "-fPIE", "-fno-PIE", "-pie", "-no-pie", "-Xlinker /DYNAMICBASE" }, gcc.getldflags(imagecfg))
+			test.excludes({ "-fPIC", "-fPIE", "-fno-PIE", "-Wl,--dynamicbase", "-Wl,--disable-dynamicbase" }, gcc.getcflags(imagecfg))
+			test.excludes({ "-fPIC", "-fPIE", "-fno-PIE", "-Wl,--dynamicbase", "-Wl,--disable-dynamicbase" }, gcc.getcxxflags(imagecfg))
+		end
+	end
+
+	-- Windows executables use GNU PE ASLR linker options.
+	function suite.hardenAslr_windowsExecutableOptions()
+		checkWindowsAslr("ConsoleApp", "x86")
+	end
+
+	-- Windows DLLs use GNU PE ASLR linker options.
+	function suite.hardenAslr_windowsSharedLibraryOptions()
+		checkWindowsAslr("SharedLib", "x86_64")
+	end
+
+	-- Windows archives and defaults add no ASLR overrides.
+	function suite.hardenAslr_windowsArchivesAndDefaults()
+		system "Windows"
+		toolset "gcc"
+		configurations { "On", "Off", "Default", "Unset" }
+		filter "configurations:On or Off"
+			kind "StaticLib"
+		filter "configurations:On"
+			hardenaslr "On"
+		filter "configurations:Off"
+			hardenaslr "Off"
+		filter "configurations:Default"
+			hardenaslr "Default"
+		local neutral = test.getconfig(prj, "Unset")
+		for _, name in ipairs({ "On", "Off", "Default", "Unset" }) do
+			local imagecfg = p.project.getconfig(neutral.project, name)
+			test.excludes({ "-Wl,--dynamicbase", "-Wl,--disable-dynamicbase", "-fPIC", "-fPIE", "-fno-PIE", "-pie", "-no-pie" }, gcc.getldflags(imagecfg))
+			test.excludes({ "-fPIC", "-fPIE", "-fno-PIE" }, gcc.getcflags(imagecfg))
+			test.excludes({ "-fPIC", "-fPIE", "-fno-PIE" }, gcc.getcxxflags(imagecfg))
+		end
+	end
+
+	-- Windows ARM rejects ASLR Off.
+	function suite.hardenAslr_windowsArmOffRejected()
+		system "Windows"
+		toolset "gcc"
+		architecture "ARM64"
+		hardenaslr "Off"
+		prepare()
+		local ok, err = pcall(gcc.getldflags, cfg)
+		test.isfalse(ok)
+		test.istrue(err:find("ARM", 1, true) ~= nil)
+	end
+
+	local function aslrCodeFlags(flags)
+		local selected = {}
+		for _, flag in ipairs(flags) do
+			if flag == "-fPIC" or flag == "-fPIE" or flag == "-fno-PIE" then
+				table.insert(selected, flag)
+			end
+		end
+		return selected
+	end
+
+	-- PIE code generation appears once in each phase.
+	function suite.hardenAslr_executableCodeModelIsUnique()
+		hardenaslr "On"
+		pic "On"
+		prepare()
+		test.isequal({ "-fPIE" }, aslrCodeFlags(gcc.getcflags(cfg)))
+		test.isequal({ "-fPIE" }, aslrCodeFlags(gcc.getcxxflags(cfg)))
+		test.isequal({ "-fPIE" }, aslrCodeFlags(gcc.getldflags(cfg)))
+	end
+
+	-- Shared library PIC appears once in each phase.
+	function suite.hardenAslr_sharedCodeModelIsUnique()
+		kind "SharedLib"
+		hardenaslr "On"
+		prepare()
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getcflags(cfg)))
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getcxxflags(cfg)))
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getldflags(cfg)))
+	end
+
+	-- ASLR Off preserves one explicit PIC choice.
+	function suite.hardenAslr_offPicCodeModelIsUnique()
+		hardenaslr "Off"
+		pic "On"
+		prepare()
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getcflags(cfg)))
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getcxxflags(cfg)))
+		test.isequal({ "-fPIC" }, aslrCodeFlags(gcc.getldflags(cfg)))
+	end
+
+	-- Raw file flags inherit ASLR through the project configuration.
+	function suite.hardenAslr_fileConfigUsesProject()
+		files { "main.cpp" }
+		hardenaslr "On"
+		filter "files:main.cpp"
+			buildoptions { "-fno-exceptions" }
+		prepare()
+		local node = p.project.getsourcetree(cfg.project).children["main.cpp"]
+		local filecfg = p.fileconfig.getconfig(node, cfg)
+		test.isnil(filecfg.hardenaslr)
+		test.istrue(rawequal(cfg, filecfg.config))
+		test.excludes({ "-fPIE", "-fno-PIE", "-fPIC" }, gcc.getcxxflags(filecfg))
 	end

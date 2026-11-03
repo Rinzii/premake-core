@@ -410,6 +410,10 @@
 		dynamicdebugging = {
 			On = "/dynamicdeopt",
 		},
+		hardenaslr = {
+			Off = "/DYNAMICBASE:NO",
+			On = "/DYNAMICBASE",
+		},
 	}
 
 	msc.librarianFlags = {
@@ -423,6 +427,7 @@
 	end
 
 	function msc.getldflags(cfg)
+		p.validation.configHardenAslr(cfg, msc)
 		local map = iif(cfg.kind ~= p.STATICLIB, msc.linkerFlags, msc.librarianFlags)
 		local flags = config.mapFlags(cfg, map)
 

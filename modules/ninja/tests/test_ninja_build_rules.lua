@@ -229,7 +229,7 @@ rule rc_gcc
 		cpp.linkrule(cfg)
 		test.capture [[
 rule ar_msc
-  command = lib $in /nologo -OUT:$out
+  command = $ar $in /nologo -OUT:$out
   description = Archiving static library $out
 
 rule link_msc
@@ -252,7 +252,7 @@ rule link_msc
 		cpp.linkrule(cfg)
 		test.capture [[
 rule ar_gcc
-  command = ar -rcs $out $in
+  command = $ar -rcs $out $in
   description = Archiving static library $out
 
 rule link_gcc
@@ -275,7 +275,7 @@ rule link_gcc
 		cpp.linkrule(cfg)
 		test.capture [[
 rule ar_gcc
-  command = ar -rcs $out $in
+  command = $ar -rcs $out $in
   description = Archiving static library $out
 
 rule link_gcc
@@ -299,13 +299,66 @@ rule link_gcc
 		cpp.linkrule(cfg)
 		test.capture [[
 rule ar_gcc
-  command = ar -rcs $out $in
+  command = $ar -rcs $out $in
   description = Archiving static library $out
 
 rule link_gcc
   command = g++ -o $out $in $links $ldflags
   description = Linking target $out
 
+		]]
+	end
+
+	local function archiveConfigurations(target, compiler)
+		system(target)
+		toolset(compiler)
+		kind "StaticLib"
+		filter "configurations:Release"
+			linktimeoptimization "On"
+		local debug = prepare()
+		local release = p.project.getconfig(debug.project, "Release")
+		debug._objectFiles = { "debug.o" }
+		release._objectFiles = { "release.o" }
+		cpp.linkrule(debug)
+		cpp.linkTarget(debug)
+		cpp.linkTarget(release)
+	end
+
+	-- GCC archive commands select the archiver for each configuration.
+	function suite.archiveTool_onGccLtoConfigurations()
+		archiveConfigurations("Windows", "gcc")
+		test.capture [[
+rule ar_gcc
+  command = $ar -rcs $out $in
+  description = Archiving static library $out
+
+rule link_gcc
+  command = g++ -o $out $in $links $ldflags
+  description = Linking target $out
+
+build bin/Debug/MyProject.lib: ar_gcc debug.o
+  ar = ar
+build bin/Release/MyProject.lib: ar_gcc release.o
+  ar = gcc-ar
+		]]
+	end
+
+	-- Clang LTO archives use llvm-ar after a neutral configuration.
+	function suite.archiveTool_onClangLtoConfigurations()
+		archiveConfigurations("Linux", "clang")
+		test.capture [[
+rule ar_clang
+  command = $ar -rcs $out $in
+  description = Archiving static library $out
+
+rule link_clang
+  command = clang++ -o $out $in $links $ldflags
+  description = Linking target $out
+
+build bin/Debug/libMyProject.a: ar_clang debug.o
+  ar = ar
+build bin/Release/libMyProject.a: ar_clang release.o
+  ar = llvm-ar
 		]]
 	end
 

@@ -210,6 +210,49 @@ target_MyProject_Debug = MyProject.exe
 		]]
 	end
 
+	-- File metadata retains inherited PIE compilation and linking.
+	function suite.hardenAslr_preservesInheritedFileFlags()
+		system "Linux"
+		toolset "clang"
+		hardenaslr "On"
+		pic "On"
+		files { "main.cpp" }
+		filter "files:main.cpp"
+			buildoptions { "-fno-exceptions" }
+		local cfg = prepare()
+		local node = p.project.getsourcetree(cfg.project).children["main.cpp"]
+		local filecfg = p.fileconfig.getconfig(node, cfg)
+		local flags = cpp.getFileCxxFlags(cfg, filecfg)
+		test.contains({ "-fPIE", "-fno-exceptions" }, flags)
+		test.excludes({ "-fPIC", "-fno-PIE" }, flags)
+		test.contains({ "-fPIE", "-pie" }, cpp.getLdFlags(cfg))
+	end
+
+	-- Shared libraries compile and link as PIC.
+	function suite.hardenAslr_sharedLibraryMatchesDriverFlags()
+		system "Linux"
+		toolset "gcc"
+		kind "SharedLib"
+		hardenaslr "On"
+		local cfg = prepare()
+		test.contains({ "-fPIC" }, cpp.getCFlags(cfg))
+		test.contains({ "-fPIC" }, cpp.getCxxFlags(cfg))
+		test.contains({ "-fPIC", "-shared" }, cpp.getLdFlags(cfg))
+		test.excludes({ "-pie", "-no-pie" }, cpp.getLdFlags(cfg))
+	end
+
+	-- Ninja forwards Windows Clang ASLR linker options.
+	function suite.hardenAslr_windowsClangLinkerOptions()
+		system "Windows"
+		toolset "clang"
+		hardenaslr "On"
+		local cfg = prepare()
+		p.project.validate(cfg.project)
+		test.contains({ "-Xlinker /DYNAMICBASE" }, cpp.getLdFlags(cfg))
+		test.excludes({ "-fPIE", "-fno-PIE", "-pie", "-no-pie" }, cpp.getCFlags(cfg))
+		test.excludes({ "-fPIE", "-fno-PIE", "-pie", "-no-pie" }, cpp.getCxxFlags(cfg))
+	end
+
 
 --
 -- Check that include directories are added to flags.
@@ -1218,4 +1261,3 @@ target_MyProject_Debug = MyProject.exe
 
 		]]
 	end
-

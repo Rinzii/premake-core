@@ -122,9 +122,8 @@ function m.linkrule(cfg, toolset)
 	local toolsetName = ninja.toolsetname(cfg)
 
 	if toolset == p.tools.msc then
-		local arname = toolset.gettoolname(cfg, "ar")
 		_p("rule ar_%s", toolsetName)
-		_p("  command = %s $in /nologo -OUT:$out", arname)
+		_p("  command = $ar $in /nologo -OUT:$out")
 		_p("  description = Archiving static library $out")
 		_p("")
 
@@ -134,9 +133,8 @@ function m.linkrule(cfg, toolset)
 		_p("  description = Linking target $out")
 		_p("")
 	else
-		local arname = toolset.gettoolname(cfg, "ar")
 		_p("rule ar_%s", toolsetName)
-		_p("  command = %s -rcs $out $in", arname)
+		_p("  command = $ar -rcs $out $in")
 		_p("  description = Archiving static library $out")
 		_p("")
 
@@ -1206,7 +1204,9 @@ function m.linkTarget(cfg)
 		_p("build %s: %s_%s %s%s", targetPath, rule, toolsetName, table.concat(cfg._objectFiles, " "), implicitDeps)
 	end
 	
-	if cfg.kind ~= p.STATICLIB then
+	if cfg.kind == p.STATICLIB then
+		_p("  ar = %s", toolset.gettoolname(cfg, "ar"))
+	else
 		_p("  ldflags = $ldflags_%s", ninja.key(cfg))
 		
 		local links = toolset.getlinks(cfg)

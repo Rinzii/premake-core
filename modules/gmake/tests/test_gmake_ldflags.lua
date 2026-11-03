@@ -39,6 +39,18 @@ ALL_LDFLAGS += $(LDFLAGS)
 		]]
 	end
 
+	-- Make forwards Windows GCC ASLR linker options.
+	function suite.hardenAslr_windowsGccLinkerOptions()
+		p.action.set("gmake")
+		system "Windows"
+		toolset "gcc"
+		hardenaslr "On"
+		prepare()
+		test.capture [[
+ALL_LDFLAGS += $(LDFLAGS) -Wl,--dynamicbase
+		]]
+	end
+
 --
 -- Check addition of library search directories.
 --

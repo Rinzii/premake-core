@@ -45,6 +45,21 @@
 		]]
 	end
 
+	-- CodeLite forwards Windows Clang ASLR Off.
+	function suite.hardenAslr_windowsClangLinkerOptions()
+		system "Windows"
+		toolset "clang"
+		symbols "On"
+		hardenaslr "Off"
+		prepare()
+		p.project.validate(prj)
+		codelite.project.linker(cfg)
+		test.capture [[
+      <Linker Options="-Xlinker /DYNAMICBASE:NO" Required="yes">
+      </Linker>
+		]]
+	end
+
 	function suite.OnProjectCfg_Flags()
 		optimize "Debug"
 		exceptionhandling "Off"
