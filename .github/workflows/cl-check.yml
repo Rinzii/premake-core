@@ -1,0 +1,11 @@
+name: cl define order check
+
+on: push
+
+jobs:
+  cl:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - shell: pwsh
+        run: ./check.ps1
